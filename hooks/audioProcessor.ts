@@ -9,7 +9,7 @@ class AudioProcessor extends AudioWorkletProcessor {
         super();
         this.targetSampleRate = 16000;
         this.vadThreshold = 0.02;
-        this.chunkSize = 256; // Extreme low latency (approx 16ms)
+        this.chunkSize = 1048; // Balanced latency (approx 65.5ms)
         
         // Buffers
         this.buffer = new Float32Array(this.chunkSize);
