@@ -21,6 +21,7 @@ export function useVoiceClient() {
     const [speakingState, setSpeakingState] = useState<SpeakingState>('idle');
     const [error, setError] = useState<string | null>(null);
     const [lastTranscript, setLastTranscript] = useState<{ source: 'user' | 'assistant', text: string } | null>(null);
+    const [volume, setVolume] = useState<number>(0);
 
     // Track if AI is currently queueing/playing audio to prevent premature "listening" state
     const isAIRespondingRef = useRef<boolean>(false);
@@ -151,13 +152,14 @@ export function useVoiceClient() {
                 await ctx.resume();
             }
 
+            // Mobile Optimization: Disable software processing to reduce latency
+            // Also remove 'ideal' sample rate to avoid browser-side resampling overhead
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    channelCount: 1,
-                    sampleRate: { ideal: SEND_SAMPLE_RATE }
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false,
+                    channelCount: 1
                 }
             });
             mediaStreamRef.current = stream;
@@ -185,6 +187,12 @@ export function useVoiceClient() {
                         console.log("Barge-in detected via Worklet!");
                         stopAudioPlayback();
                     }
+                } else if (type === 'volume') {
+                    // Update volume state for visualization
+                    // processing high rate messages might trigger too many renders, but React 18 batching helps.
+                    // For smoother UI, maybe throttle this? 
+                    // Or just set state, since the worklet sends it every 64ms (15fps), which is perfect for UI.
+                    setVolume(data);
                 } else if (type === 'audio_data') {
                     if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
@@ -304,6 +312,7 @@ export function useVoiceClient() {
         speakingState,
         error,
         lastTranscript,
+        volume,
         connect,
         disconnect,
         startRecording,

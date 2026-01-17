@@ -36,6 +36,10 @@ class AudioProcessor extends AudioWorkletProcessor {
         if (rms > this.vadThreshold) {
             this.port.postMessage({ type: 'vad_signal' });
         }
+        
+        // Send volume for visualization (throttle to every ~64ms or just send every chunk)
+        // Since chunk is 64ms now, sending every chunk is fine.
+        this.port.postMessage({ type: 'volume', data: rms });
 
         // 2. Downsampling (Linear Interpolation)
         // Ratio: input / target (e.g. 48000 / 16000 = 3)

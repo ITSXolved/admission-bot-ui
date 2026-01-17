@@ -17,7 +17,8 @@ export default function VoiceChat() {
         disconnect,
         startRecording,
         stopRecording,
-        initAudioSession
+        initAudioSession,
+        volume
     } = useVoiceClient();
 
     const [timeLeft, setTimeLeft] = useState(SESSION_DURATION);
@@ -82,7 +83,7 @@ export default function VoiceChat() {
             <div className="z-10 w-full max-w-md flex flex-col items-center gap-8">
 
                 {/* Header / Timer */}
-                <div className="flex items-center gap-2 text-2xl font-light tracking-wider opacity-80">
+                <div className="flex items-center gap-2 =text-2xl font-light tracking-wider opacity-80">
                     <Clock className="w-6 h-6" />
                     <span>{formatTime(timeLeft)}</span>
                 </div>
@@ -106,8 +107,11 @@ export default function VoiceChat() {
                     {isActive && status === 'connected' && (
                         <motion.div
                             className="absolute inset-0 bg-blue-500 rounded-full opacity-20"
-                            animate={{ scale: [1, 1.6], opacity: [0.4, 0] }}
-                            transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
+                            animate={{
+                                scale: speakingState === 'speaking' ? [1, 1.2] : [1, 1 + Math.min(volume * 10, 1.5)],
+                                opacity: [0.4, 0]
+                            }}
+                            transition={{ duration: speakingState === 'speaking' ? 2 : 0.5, repeat: Infinity, ease: "easeOut" }}
                         />
                     )}
 
