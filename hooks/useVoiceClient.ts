@@ -144,7 +144,9 @@ export function useVoiceClient() {
     const startRecording = useCallback(async () => {
         try {
             if (!audioContextRef.current) {
-                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
+                    latencyHint: 'interactive'
+                });
             }
 
             const ctx = audioContextRef.current;
@@ -295,7 +297,9 @@ export function useVoiceClient() {
     const initAudioSession = useCallback(async () => {
         try {
             if (!audioContextRef.current) {
-                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
+                    latencyHint: 'interactive'
+                });
             }
             if (audioContextRef.current.state === 'suspended') {
                 await audioContextRef.current.resume();

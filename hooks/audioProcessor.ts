@@ -8,12 +8,13 @@ class AudioProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
         this.targetSampleRate = 16000;
-        this.vadThreshold = 0.02;
-        this.chunkSize = 1048; // Balanced latency (approx 65.5ms)
+        this.vadThreshold = 0.005; // Ultra-sensitive for instant interruption
+        this.chunkSize = 1024; // User requested balance (approx 64ms)
         
         // Buffers
         this.buffer = new Float32Array(this.chunkSize);
         this.bufferIndex = 0;
+        this.volumeSkipCounter = 0; // Throttle visualizer
         
         // Resampling state
         this.residue = 0;
@@ -33,13 +34,18 @@ class AudioProcessor extends AudioWorkletProcessor {
         }
         const rms = Math.sqrt(sum / channelData.length);
         
+        // Priority: Send VAD signal immediately
         if (rms > this.vadThreshold) {
             this.port.postMessage({ type: 'vad_signal' });
         }
         
-        // Send volume for visualization (throttle to every ~64ms or just send every chunk)
-        // Since chunk is 64ms now, sending every chunk is fine.
-        this.port.postMessage({ type: 'volume', data: rms });
+        // Send volume for visualization (Throttled)
+        // Only send every 3rd chunk (~200ms) to prevent Main Thread flooding
+        this.volumeSkipCounter++;
+        if (this.volumeSkipCounter >= 3) {
+            this.port.postMessage({ type: 'volume', data: rms });
+            this.volumeSkipCounter = 0;
+        }
 
         // 2. Downsampling (Linear Interpolation)
         // Ratio: input / target (e.g. 48000 / 16000 = 3)
