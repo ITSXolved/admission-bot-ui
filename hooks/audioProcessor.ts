@@ -8,8 +8,8 @@ class AudioProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
         this.targetSampleRate = 16000;
-        this.vadThreshold = 0.01; // Standard sensitivity (AEC enabled)
-        this.chunkSize = 1024; // Balanced 64ms for Mobile Performance
+        this.vadThreshold = 0.002; // Hybrid Sensitivity (AEC Enabled)
+        this.chunkSize = 512; // 32ms Fast Polling (Code Optimized)
         
         // Buffers
         this.buffer = new Float32Array(this.chunkSize);
