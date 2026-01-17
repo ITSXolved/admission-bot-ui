@@ -158,19 +158,10 @@ export function useVoiceClient() {
             // Also remove 'ideal' sample rate to avoid browser-side resampling overhead
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: false,
-                    channelCount: 1,
-                    // Chrome Android Legacy Flags to force raw audio
-                    // @ts-ignore - Non-standard constraints
-                    googEchoCancellation: false,
-                    // @ts-ignore
-                    googAutoGainControl: false,
-                    // @ts-ignore
-                    googNoiseSuppression: false,
-                    // @ts-ignore
-                    googHighpassFilter: false
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    channelCount: 1
                 }
             });
             mediaStreamRef.current = stream;
