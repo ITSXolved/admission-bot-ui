@@ -131,6 +131,9 @@ export default function VoiceChat() {
         }
     }, []);
 
+    // Moved disconnect to be after useAudioRecorder to access stopRecording
+
+
     const connect = () => {
         if (websocketRef.current) return;
 
@@ -170,31 +173,43 @@ export default function VoiceChat() {
         }
     });
 
-    const toggleRecording = async () => {
-        if (status === "disconnected") {
-            connect();
-            return;
+    const disconnect = useCallback(() => {
+        if (websocketRef.current) {
+            websocketRef.current.close();
+        }
+        stopRecording();
+
+        // Instantly stop audio playback
+        if (audioContextRef.current) {
+            audioContextRef.current.close().catch(console.error);
+            audioContextRef.current = null;
         }
 
-        if (isRecording) {
-            stopRecording();
-            // Reset scheduling time
-            nextStartTimeRef.current = 0;
-            setStatus("connected");
-        } else {
-            // Resume AudioContext if suspended (browser policy)
-            const ctx = getAudioContext();
-            if (ctx.state === "suspended") {
-                await ctx.resume();
-            }
+        setStatus("disconnected");
+        websocketRef.current = null;
+        // Reset state
+        setMessages([]);
+        nextStartTimeRef.current = 0;
+    }, [stopRecording]);
 
-            startRecording();
-            setStatus("listening");
+    const toggleSession = async () => {
+        if (status === "disconnected") {
+            connect();
+        } else {
+            disconnect();
         }
     };
 
+    // Auto-start recording when session starts
     useEffect(() => {
-        connect();
+        if (status === "connected" && !isRecording) {
+            startRecording().catch(console.error);
+            setStatus("listening");
+        }
+    }, [status, isRecording, startRecording]);
+
+    useEffect(() => {
+        // connect(); // Removed auto-connect
         return () => {
             websocketRef.current?.close();
         };
@@ -267,24 +282,24 @@ export default function VoiceChat() {
 
             {/* Controls */}
             <button
-                onClick={toggleRecording}
+                onClick={toggleSession}
                 disabled={status === "connecting"}
                 className={cn(
                     "z-10 group relative flex items-center gap-3 px-8 py-4 rounded-full font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
-                    status === "listening"
-                        ? "bg-red-500 text-white hover:bg-red-600"
-                        : "bg-zinc-900 text-white dark:bg-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                    status === "disconnected"
+                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                        : "bg-red-500 text-white hover:bg-red-600"
                 )}
             >
-                {status === "listening" ? (
+                {status === "disconnected" ? (
                     <>
-                        <MicOff className="w-5 h-5" />
-                        <span>Stop</span>
+                        <Mic className="w-5 h-5" />
+                        <span>Start Conversation</span>
                     </>
                 ) : (
                     <>
-                        <Mic className="w-5 h-5" />
-                        <span>Start Speaking</span>
+                        <MicOff className="w-5 h-5" />
+                        <span>Stop Conversation</span>
                     </>
                 )}
             </button>
