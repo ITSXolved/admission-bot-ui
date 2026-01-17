@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { base64ToFloat32 } from '../utils/audioUtils';
+import { base64ToFloat32, downsampleBuffer } from '../utils/audioUtils';
 import { AUDIO_PROCESSOR_CODE } from './audioProcessor';
 
 const SEND_SAMPLE_RATE = 16000;
 const RECEIVE_SAMPLE_RATE = 22000;
-const CHUNK_SIZE = 4096; // Browser AudioProcessor buffer size
+const CHUNK_SIZE = 512; // Browser AudioProcessor buffer size
 // Use the production URL as verified from client.py
 const WEBSOCKET_URL = "wss://admission-bot-166647007319.asia-southeast1.run.app";
 
 // VAD Threshold - Adjust based on microphone sensitivity
 // Move VAD logic primarily to Worklet, but keep threshold here if needed for config? 
 // Actually Worklet has it hardcoded for now, or we can pass it via parameters.
-const VAD_THRESHOLD = 0.02;
+const VAD_THRESHOLD = 0.0001;
 
 type VoiceClientStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 type SpeakingState = 'idle' | 'listening' | 'speaking';
@@ -25,6 +25,8 @@ export function useVoiceClient() {
 
     // Track if AI is currently queueing/playing audio to prevent premature "listening" state
     const isAIRespondingRef = useRef<boolean>(false);
+    // Track interruption state to ignore "zombie" audio packets from the previous turn
+    const shouldIgnoreAudioRef = useRef<boolean>(false);
 
     const wsRef = useRef<WebSocket | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -49,6 +51,7 @@ export function useVoiceClient() {
                 type: "start_session",
                 user_language: "english"
             }));
+            shouldIgnoreAudioRef.current = false; // Reset on new session
         };
 
         ws.onclose = () => {
@@ -70,6 +73,11 @@ export function useVoiceClient() {
                 if (data.type === 'session_started') {
                     console.log("Session started");
                 } else if (data.type === 'audio') {
+                    // Ignore "Zombie" audio if we recently interrupted
+                    if (shouldIgnoreAudioRef.current) {
+                        console.log("Ignored zombie audio packet");
+                        return;
+                    }
                     isAIRespondingRef.current = true;
                     setSpeakingState('speaking');
                     playAudio(data.data);
@@ -79,6 +87,9 @@ export function useVoiceClient() {
                         text: data.text
                     });
                 } else if (data.type === 'turn_complete') {
+                    // Turn is done, we can accept new audio for the NEXT turn
+                    shouldIgnoreAudioRef.current = false;
+
                     // Only switch to idle if we aren't waiting for audio to finish
                     // But typically audio messages come before turn_complete.
                     // We'll rely on playAudio's onended or a check to reset state.
@@ -114,6 +125,7 @@ export function useVoiceClient() {
 
         setStatus('disconnected');
         isAIRespondingRef.current = false;
+        shouldIgnoreAudioRef.current = false;
     }, []);
 
     const stopAudioPlayback = useCallback(() => {
@@ -134,6 +146,9 @@ export function useVoiceClient() {
 
         // Reset state
         isAIRespondingRef.current = false;
+        // IMPORTANT: We interrupted. Ignore any remaining audio for this turn.
+        shouldIgnoreAudioRef.current = true;
+
         setSpeakingState((prev) => prev === 'speaking' ? 'listening' : prev);
         // Force back to listening immediately if we interrupted
         if (speakingState === 'speaking') {
@@ -145,8 +160,8 @@ export function useVoiceClient() {
         try {
             if (!audioContextRef.current) {
                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
-                    latencyHint: 'interactive'
-                    // sampleRate: 16000 - Removed to fix playback lag (let browser use native 48k)
+                    latencyHint: 'interactive',
+                    sampleRate: 16000 // Force 16kHz context for lowest latency interruption
                 });
             }
 
@@ -162,8 +177,8 @@ export function useVoiceClient() {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    channelCount: 1
-                    // sampleRate: 16000 - Removed to match context
+                    channelCount: 1,
+                    sampleRate: 16000 // Request native 16kHz input
                 }
             });
             mediaStreamRef.current = stream;
@@ -254,8 +269,12 @@ export function useVoiceClient() {
         // Decode audio
         const float32Data = base64ToFloat32(base64Data);
 
-        const buffer = ctx.createBuffer(1, float32Data.length, RECEIVE_SAMPLE_RATE);
-        buffer.getChannelData(0).set(float32Data);
+        // Manual Resampling: 22kHz -> 16kHz
+        // Since Context is 16k, we MUST resample here to avoid browser scheduling lag
+        const resampledData = downsampleBuffer(float32Data, RECEIVE_SAMPLE_RATE, 16000);
+
+        const buffer = ctx.createBuffer(1, resampledData.length, 16000);
+        buffer.getChannelData(0).set(resampledData);
 
         const source = ctx.createBufferSource();
         source.buffer = buffer;
@@ -303,7 +322,8 @@ export function useVoiceClient() {
         try {
             if (!audioContextRef.current) {
                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
-                    latencyHint: 'interactive'
+                    latencyHint: 'interactive',
+                    sampleRate: 16000
                 });
             }
             if (audioContextRef.current.state === 'suspended') {

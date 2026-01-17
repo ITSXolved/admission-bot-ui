@@ -8,9 +8,9 @@ class AudioProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
         this.targetSampleRate = 16000;
-        this.vadThreshold = 0.002; // Hybrid Sensitivity (AEC Enabled)
-        this.chunkSize = 512; // 32ms Fast Polling (Code Optimized)
-        
+        this.vadThreshold = 0.005; // Robust Sensitivity (Filters fan noise)
+        this.chunkSize = 512; // 32ms Fast Polling
+
         // Buffers
         this.buffer = new Float32Array(this.chunkSize);
         this.bufferIndex = 0;
@@ -47,11 +47,11 @@ class AudioProcessor extends AudioWorkletProcessor {
             this.volumeSkipCounter = 0;
         }
 
-        // 2. Downsampling (Linear Interpolation)
-        // Ratio: input / target (e.g. 48000 / 16000 = 3)
+        // 2. Downsampling (Nearest Neighbor)
+        // Ratio: input / target
         const ratio = inputSampleRate / this.targetSampleRate;
         
-        // Optimize 1: Fast path for 16kHz -> 16kHz (No resampling needed)
+        // Optimize: Fast path for 16kHz -> 16kHz (No resampling needed)
         if (ratio === 1) {
              for (let i = 0; i < channelData.length; i++) {
                 this.buffer[this.bufferIndex++] = channelData[i];
@@ -62,56 +62,28 @@ class AudioProcessor extends AudioWorkletProcessor {
             return true;
         }
 
-        // Optimize 2: Fast Decimation for 48kHz -> 16kHz (Ratio exactly 3)
-        // This is the most common Android scenario.
-        // Instead of math, we just take every 3rd sample.
-        if (ratio === 3) {
-            for (let i = 0; i < channelData.length; i += 3) {
+        // Universal Fast Downsampling (Nearest Neighbor)
+        // O(N) for ANY sample rate (44.1k, 48k, 88.2k, 96k)
+        // "Residue" tracks our position in the input buffer
+        while (this.residue < channelData.length) {
+            
+            // Just pick the sample at the current position
+            // No interpolation math = Fast
+            const i = Math.floor(this.residue);
+            
+            if (i < channelData.length) {
                 this.buffer[this.bufferIndex++] = channelData[i];
+                
                 if (this.bufferIndex >= this.chunkSize) {
                     this.flush();
                 }
             }
-            return true;
-        }
-
-        // We iterate over the *output* frames we want to generate
-        // 'residue' tracks where we are in the input buffer (sub-sample precision)
-        
-        let outputIndex = 0;
-        
-        // While we have enough input data to generate an output sample
-        while (this.residue < channelData.length) {
             
-            // Linear Interpolation:
-            // index of sample before: floor(residue)
-            // index of sample after: ceil(residue)
-            // weight: residue - floor(residue)
-            
-            const i = Math.floor(this.residue);
-            const decimal = this.residue - i;
-            
-            // Boundary checks
-            const s0 = channelData[i];
-            const s1 = (i + 1 < channelData.length) ? channelData[i+1] : s0; // Clamp to end
-            
-            // Interpolate
-            const result = s0 + (s1 - s0) * decimal;
-            
-            // Output to buffer
-            this.buffer[this.bufferIndex++] = result;
-            
-            // If buffer full, flush
-            if (this.bufferIndex >= this.chunkSize) {
-                this.flush();
-            }
-            
-            // Advance
+            // Advance by the ratio
             this.residue += ratio; 
         }
         
-        // Keep the fractional part of residue for next process call, 
-        // effectively "wrapping" the input index to the next chunk.
+        // Keep the fractional/overflow part for next chunk
         this.residue -= channelData.length;
         
         return true;
