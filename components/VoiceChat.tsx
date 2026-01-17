@@ -73,9 +73,10 @@ export default function VoiceChat() {
         <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-4 font-sans relative overflow-hidden">
 
             {/* Background decoration */}
+            {/* Background decoration - Simplified for Performance */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-                <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[100px]" />
-                <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[100px]" />
+                <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-900/10 rounded-full" />
+                <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-900/10 rounded-full" />
             </div>
 
             <div className="z-10 w-full max-w-md flex flex-col items-center gap-8">
@@ -101,19 +102,13 @@ export default function VoiceChat() {
                 <div className="relative group">
 
                     {/* Ripple Animations when active */}
+                    {/* Optimized Ripple Animation */}
                     {isActive && status === 'connected' && (
-                        <>
-                            <motion.div
-                                className="absolute inset-0 bg-blue-500 rounded-full opacity-20"
-                                animate={{ scale: [1, 2], opacity: [0.3, 0] }}
-                                transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
-                            />
-                            <motion.div
-                                className="absolute inset-0 bg-blue-400 rounded-full opacity-20"
-                                animate={{ scale: [1, 1.5], opacity: [0.3, 0] }}
-                                transition={{ duration: 2, repeat: Infinity, ease: "easeOut", delay: 0.5 }}
-                            />
-                        </>
+                        <motion.div
+                            className="absolute inset-0 bg-blue-500 rounded-full opacity-20"
+                            animate={{ scale: [1, 1.6], opacity: [0.4, 0] }}
+                            transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
+                        />
                     )}
 
                     <button
