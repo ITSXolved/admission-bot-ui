@@ -8,8 +8,8 @@ class AudioProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
         this.targetSampleRate = 16000;
-        this.vadThreshold = 0.005; // Ultra-sensitive for instant interruption
-        this.chunkSize = 1024; // User requested balance (approx 64ms)
+        this.vadThreshold = 0.001; // Absolute floor sensitivity (catches whispers)
+        this.chunkSize = 512; // 32ms for 30Hz polling (Ultimate Realtime)
         
         // Buffers
         this.buffer = new Float32Array(this.chunkSize);

@@ -161,7 +161,16 @@ export function useVoiceClient() {
                     echoCancellation: false,
                     noiseSuppression: false,
                     autoGainControl: false,
-                    channelCount: 1
+                    channelCount: 1,
+                    // Chrome Android Legacy Flags to force raw audio
+                    // @ts-ignore - Non-standard constraints
+                    googEchoCancellation: false,
+                    // @ts-ignore
+                    googAutoGainControl: false,
+                    // @ts-ignore
+                    googNoiseSuppression: false,
+                    // @ts-ignore
+                    googHighpassFilter: false
                 }
             });
             mediaStreamRef.current = stream;
