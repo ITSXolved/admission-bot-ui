@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { floatTo16BitPCM, base64ToFloat32 } from '../utils/audioUtils';
+import { base64ToFloat32 } from '../utils/audioUtils';
 import { AUDIO_PROCESSOR_CODE } from './audioProcessor';
 
 const SEND_SAMPLE_RATE = 16000;
@@ -188,15 +188,16 @@ export function useVoiceClient() {
                 } else if (type === 'audio_data') {
                     if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
-                    // Process audio chunk
-                    const inputData = data; // Float32Array from worklet
-                    // Downsample and convert to Int16
-                    const pcmData = floatTo16BitPCM(inputData, sourceSampleRate, SEND_SAMPLE_RATE);
+                    // Data is already Int16Array from worklet
+                    const int16Data = data;
 
-                    // Convert to Base64
+                    // Convert to Base64 (Efficient string building)
+                    // Handling large arrays with String.fromCharCode(...arg) can stack overflow
+                    // chunkSize is 4096, which is usually safe, but loop is safer for mobile memory
                     let binary = '';
-                    const bytes = new Uint8Array(pcmData.buffer);
-                    for (let i = 0; i < bytes.byteLength; i++) {
+                    const bytes = new Uint8Array(int16Data.buffer);
+                    const len = bytes.byteLength;
+                    for (let i = 0; i < len; i++) {
                         binary += String.fromCharCode(bytes[i]);
                     }
                     const b64 = window.btoa(binary);
@@ -283,6 +284,21 @@ export function useVoiceClient() {
         };
     }, [disconnect]);
 
+    const initAudioSession = useCallback(async () => {
+        try {
+            if (!audioContextRef.current) {
+                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            }
+            if (audioContextRef.current.state === 'suspended') {
+                await audioContextRef.current.resume();
+            }
+            return true;
+        } catch (e) {
+            console.error("Audio Init Failed:", e);
+            return false;
+        }
+    }, []);
+
     return {
         status,
         speakingState,
@@ -291,6 +307,7 @@ export function useVoiceClient() {
         connect,
         disconnect,
         startRecording,
-        stopRecording
+        stopRecording,
+        initAudioSession
     };
 }

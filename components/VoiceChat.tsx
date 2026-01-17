@@ -16,7 +16,8 @@ export default function VoiceChat() {
         connect,
         disconnect,
         startRecording,
-        stopRecording
+        stopRecording,
+        initAudioSession
     } = useVoiceClient();
 
     const [timeLeft, setTimeLeft] = useState(SESSION_DURATION);
@@ -35,6 +36,13 @@ export default function VoiceChat() {
     }, [isActive, timeLeft]);
 
     const handleStart = async () => {
+        // Critical for Mobile: Init AudioContext on User Gesture
+        const audioReady = await initAudioSession();
+        if (!audioReady) {
+            console.error("Audio Context failed to start");
+            return;
+        }
+
         setIsActive(true);
         connect();
         // Wait for connection? Or just let hook handle it. 
