@@ -204,11 +204,14 @@ export function useVoiceClient() {
                     // Convert to Base64 (Efficient string building)
                     // Handling large arrays with String.fromCharCode(...arg) can stack overflow
                     // chunkSize is 4096, which is usually safe, but loop is safer for mobile memory
+                    // Optimize 2: Use spread/apply for massive speedup over loop
+                    // 1024 or 4096 is safe for stack size (usually 65k limit)
                     let binary = '';
                     const bytes = new Uint8Array(int16Data.buffer);
-                    const len = bytes.byteLength;
-                    for (let i = 0; i < len; i++) {
-                        binary += String.fromCharCode(bytes[i]);
+                    // Process in chunks to be safe against call stack limits on all browsers
+                    const CHUNK_SZ = 0x8000; // 32k chunks
+                    for (let i = 0; i < bytes.length; i += CHUNK_SZ) {
+                        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK_SZ) as any);
                     }
                     const b64 = window.btoa(binary);
 
