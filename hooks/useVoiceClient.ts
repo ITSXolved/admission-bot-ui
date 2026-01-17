@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { floatTo16BitPCM, base64ToFloat32 } from '../utils/audioUtils';
+import { AUDIO_PROCESSOR_CODE } from './audioProcessor';
 
 const SEND_SAMPLE_RATE = 16000;
 const RECEIVE_SAMPLE_RATE = 22000;
@@ -8,15 +9,9 @@ const CHUNK_SIZE = 4096; // Browser AudioProcessor buffer size
 const WEBSOCKET_URL = "wss://admission-bot-166647007319.asia-southeast1.run.app";
 
 // VAD Threshold - Adjust based on microphone sensitivity
+// Move VAD logic primarily to Worklet, but keep threshold here if needed for config? 
+// Actually Worklet has it hardcoded for now, or we can pass it via parameters.
 const VAD_THRESHOLD = 0.02;
-
-function calculateRMS(inputBuffer: Float32Array): number {
-    let sum = 0;
-    for (let i = 0; i < inputBuffer.length; i++) {
-        sum += inputBuffer[i] * inputBuffer[i];
-    }
-    return Math.sqrt(sum / inputBuffer.length);
-}
 
 type VoiceClientStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 type SpeakingState = 'idle' | 'listening' | 'speaking';
@@ -33,7 +28,7 @@ export function useVoiceClient() {
     const wsRef = useRef<WebSocket | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
-    const processorRef = useRef<ScriptProcessorNode | null>(null);
+    const workletNodeRef = useRef<AudioWorkletNode | null>(null);
     const nextStartTimeRef = useRef<number>(0);
     const activeSourceNodesRef = useRef<AudioBufferSourceNode[]>([]);
 
@@ -168,44 +163,53 @@ export function useVoiceClient() {
             mediaStreamRef.current = stream;
 
             const source = ctx.createMediaStreamSource(stream);
-            // Deprecated but still widely supported for simple PCM access
-            const processor = ctx.createScriptProcessor(CHUNK_SIZE, 1, 1);
-            processorRef.current = processor;
 
-            processor.onaudioprocess = (e) => {
-                if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+            // Setup AudioWorklet
+            const blob = new Blob([AUDIO_PROCESSOR_CODE], { type: "application/javascript" });
+            const processorUrl = URL.createObjectURL(blob);
 
-                const inputData = e.inputBuffer.getChannelData(0);
+            try {
+                await ctx.audioWorklet.addModule(processorUrl);
+            } catch (e) {
+                console.error("Failed to load audio worklet:", e);
+            }
 
-                // Voice Activity Detection (Barge-in)
-                const rms = calculateRMS(inputData);
-                if (isAIRespondingRef.current && rms > VAD_THRESHOLD) {
-                    console.log("Barge-in detected! stopping audio.");
-                    stopAudioPlayback();
-                    // Optional: Notify server to stop generation? 
-                    // wsRef.current.send(JSON.stringify({ type: "interrupt" }));
+            const workletNode = new AudioWorkletNode(ctx, 'audio-processor');
+            workletNodeRef.current = workletNode;
+
+            workletNode.port.onmessage = (event) => {
+                const { type, data, sourceSampleRate } = event.data;
+
+                if (type === 'vad_signal') {
+                    if (isAIRespondingRef.current) {
+                        console.log("Barge-in detected via Worklet!");
+                        stopAudioPlayback();
+                    }
+                } else if (type === 'audio_data') {
+                    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+
+                    // Process audio chunk
+                    const inputData = data; // Float32Array from worklet
+                    // Downsample and convert to Int16
+                    const pcmData = floatTo16BitPCM(inputData, sourceSampleRate, SEND_SAMPLE_RATE);
+
+                    // Convert to Base64
+                    let binary = '';
+                    const bytes = new Uint8Array(pcmData.buffer);
+                    for (let i = 0; i < bytes.byteLength; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    const b64 = window.btoa(binary);
+
+                    wsRef.current.send(JSON.stringify({
+                        type: "audio",
+                        data: b64
+                    }));
                 }
-
-                // Downsample and convert to Int16
-                const pcmData = floatTo16BitPCM(inputData, ctx.sampleRate, SEND_SAMPLE_RATE);
-
-                // Convert to Base64
-                // We can use a more efficient way but for simplicity:
-                let binary = '';
-                const bytes = new Uint8Array(pcmData.buffer);
-                for (let i = 0; i < bytes.byteLength; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                const b64 = window.btoa(binary);
-
-                wsRef.current.send(JSON.stringify({
-                    type: "audio",
-                    data: b64
-                }));
             };
 
-            source.connect(processor);
-            processor.connect(ctx.destination);
+            source.connect(workletNode);
+            workletNode.connect(ctx.destination);
 
             setSpeakingState('listening');
         } catch (err) {
@@ -219,9 +223,10 @@ export function useVoiceClient() {
             mediaStreamRef.current.getTracks().forEach(track => track.stop());
             mediaStreamRef.current = null;
         }
-        if (processorRef.current) {
-            processorRef.current.disconnect();
-            processorRef.current = null;
+        if (workletNodeRef.current) {
+            workletNodeRef.current.port.onmessage = null; // Cleanup handler
+            workletNodeRef.current.disconnect();
+            workletNodeRef.current = null;
         }
         setSpeakingState('idle');
     }, []);
