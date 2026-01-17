@@ -145,8 +145,8 @@ export function useVoiceClient() {
         try {
             if (!audioContextRef.current) {
                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
-                    latencyHint: 'interactive',
-                    sampleRate: 16000 // Force 16kHz context to match server (No Resampling)
+                    latencyHint: 'interactive'
+                    // sampleRate: 16000 - Removed to fix playback lag (let browser use native 48k)
                 });
             }
 
@@ -162,8 +162,8 @@ export function useVoiceClient() {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    channelCount: 1,
-                    sampleRate: 16000 // Request native 16kHz input
+                    channelCount: 1
+                    // sampleRate: 16000 - Removed to match context
                 }
             });
             mediaStreamRef.current = stream;
@@ -303,8 +303,7 @@ export function useVoiceClient() {
         try {
             if (!audioContextRef.current) {
                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
-                    latencyHint: 'interactive',
-                    sampleRate: 16000
+                    latencyHint: 'interactive'
                 });
             }
             if (audioContextRef.current.state === 'suspended') {

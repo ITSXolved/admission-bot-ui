@@ -51,9 +51,22 @@ class AudioProcessor extends AudioWorkletProcessor {
         // Ratio: input / target (e.g. 48000 / 16000 = 3)
         const ratio = inputSampleRate / this.targetSampleRate;
         
-        // Optimize: Fast path for 16kHz -> 16kHz (No resampling needed)
+        // Optimize 1: Fast path for 16kHz -> 16kHz (No resampling needed)
         if (ratio === 1) {
              for (let i = 0; i < channelData.length; i++) {
+                this.buffer[this.bufferIndex++] = channelData[i];
+                if (this.bufferIndex >= this.chunkSize) {
+                    this.flush();
+                }
+            }
+            return true;
+        }
+
+        // Optimize 2: Fast Decimation for 48kHz -> 16kHz (Ratio exactly 3)
+        // This is the most common Android scenario.
+        // Instead of math, we just take every 3rd sample.
+        if (ratio === 3) {
+            for (let i = 0; i < channelData.length; i += 3) {
                 this.buffer[this.bufferIndex++] = channelData[i];
                 if (this.bufferIndex >= this.chunkSize) {
                     this.flush();
